@@ -9,7 +9,7 @@ while [ -h "$_src" ]; do
   [ "${_src#/}" = "$_src" ] && _src="$_dir/$_src"
 done
 _AANDEG_ROOT="${_AANDEG_ROOT:-$(cd -P "$(dirname "$_src")/.." && pwd)}"
-for f in ram catalog config service ollama info ask chat; do source "$_AANDEG_ROOT/lib/$f.sh"; done
+for f in ram catalog config service ollama info ask chat banner; do source "$_AANDEG_ROOT/lib/$f.sh"; done
 
 _port() { aandeg_config_get port 11435; }
 # All ollama subcommands (list/pull) talk to OUR server on the configured port,
@@ -65,6 +65,8 @@ case "$cmd" in
     aandeg_ask "$*" ;;
   chat)
     aandeg_chat ;;
+  welcome)
+    aandeg_welcome ;;
   help)
     cat <<'EOF'
 Aandeg — your private, local AI endpoint. Nothing you send it leaves your Mac.

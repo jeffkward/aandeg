@@ -72,8 +72,19 @@ def resolve_model():
     return ids[0] if ids else None
 
 
+def _art():
+    """The crow + wordmark, loaded from the shared share/aandeg.txt so it never
+    drifts from the rest of the tool. Falls back to the baked ART if missing."""
+    root = os.environ.get("AANDEG_ROOT", "")
+    try:
+        with open(os.path.join(root, "share", "aandeg.txt"), encoding="utf-8") as f:
+            return "\n" + f.read().rstrip("\n") + "\n"
+    except Exception:
+        return ART
+
+
 def banner(model):
-    err(GOLD + ART + OFF)
+    err(GOLD + _art() + OFF)
     err("\n")
     err("  %sA private, local AI, running on your Mac.%s\n" % (WHITE, OFF))
     err("\n")

@@ -62,8 +62,7 @@ echo "Prefer something lighter, or want to see the options? Run 'aandeg models' 
 
 aandeg use "$preset" --force >/dev/null  # --force: recommend already fits; avoids the guardrail on tiny Macs
 echo "Pulling the model and starting the service (first run downloads several GB)..."
-aandeg start
+aandeg start   # shows the ollama pull progress bar — reassuring during the big download
 
-echo
-echo "Endpoint: $(aandeg endpoint)"
-echo "Point any OpenAI-compatible client at the URL above. Nothing leaves this machine."
+# Now clear away all that brew/ollama/download noise and show a clean welcome.
+aandeg welcome

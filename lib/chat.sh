@@ -6,5 +6,5 @@ aandeg_chat() {
   local port model
   port="$(aandeg_config_get port 11435)"
   model="$(aandeg_catalog_field "$(aandeg_config_get preset best)" model)"
-  AANDEG_PORT="$port" AANDEG_MODEL="$model" python3 "$_AANDEG_ROOT/lib/chat.py"
+  AANDEG_PORT="$port" AANDEG_MODEL="$model" AANDEG_ROOT="$_AANDEG_ROOT" python3 "$_AANDEG_ROOT/lib/chat.py"
 }

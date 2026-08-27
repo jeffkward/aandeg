@@ -39,3 +39,9 @@ setup() {
   run bash "$CLI" help
   [ "$status" -eq 0 ]
 }
+@test "welcome shows the banner and points at chat + endpoint" {
+  run bash "$CLI" welcome
+  [ "$status" -eq 0 ]
+  echo "$output" | grep -q "aandeg chat"
+  echo "$output" | grep -q "http://localhost:11435/v1"
+}
