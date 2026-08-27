@@ -87,6 +87,7 @@ EOF
   info)     aandeg_info_json ;;
   start)
     aandeg_ollama_ensure
+    aandeg_ollama_check || exit 1   # bail early (clear message) if ollama is too old
     # Server must be up before we can pull/list models, so load it first.
     aandeg_service_install "$(_port)" "$(aandeg_config_get idle_timeout 30)"
     aandeg_service_load
