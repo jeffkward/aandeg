@@ -1,0 +1,109 @@
+#!/usr/bin/env bash
+set -euo pipefail
+# Resolve our own location through any symlinks (the installer symlinks this
+# into ~/.local/bin, so BASH_SOURCE is a symlink, not the real file).
+_src="${BASH_SOURCE[0]}"
+while [ -h "$_src" ]; do
+  _dir="$(cd -P "$(dirname "$_src")" && pwd)"
+  _src="$(readlink "$_src")"
+  [ "${_src#/}" = "$_src" ] && _src="$_dir/$_src"
+done
+_AANDEG_ROOT="${_AANDEG_ROOT:-$(cd -P "$(dirname "$_src")/.." && pwd)}"
+for f in ram catalog config service ollama info ask chat; do source "$_AANDEG_ROOT/lib/$f.sh"; done
+
+_port() { aandeg_config_get port 11435; }
+# All ollama subcommands (list/pull) talk to OUR server on the configured port,
+# not ollama's default 11434.
+export OLLAMA_HOST="127.0.0.1:$(_port)"
+
+# -c: answer a one-shot prompt, then continue into interactive chat with that
+# exchange as context (`aandeg -c "name three animals"` then dig into #2).
+if [ "${1:-}" = "-c" ]; then
+  shift
+  init="$*"
+  [ -n "$init" ] || { echo 'usage: aandeg -c "your prompt"' >&2; exit 1; }
+  AANDEG_INITIAL="$init" aandeg_chat
+  exit 0
+fi
+
+cmd="${1:-help}"; shift || true
+case "$cmd" in
+  use)
+    preset="${1:?usage: aandeg use small|balanced|best}"
+    case "$preset" in small|balanced|best) ;; *) echo "unknown preset: $preset (try: aandeg models)"; exit 1;; esac
+    ram="$(aandeg_ram_gb)"
+    # Guardrail: you may always step DOWN to a lighter model (informed choice),
+    # but stepping UP past what your RAM can hold needs --force.
+    if ! aandeg_preset_fits "$preset" "$ram" && [ "${2:-}" != "--force" ]; then
+      need="$(aandeg_catalog_field "$preset" needs_gb)"
+      rec="$(aandeg_recommend_preset "$ram")"
+      echo "'$preset' ($(aandeg_catalog_field "$preset" model)) wants ~${need}GB of RAM, but your Mac has ${ram}GB."
+      echo "It would run very slowly or fail to load, so I'm leaving you on '$(aandeg_config_get preset "$rec")'."
+      echo "Best fit for your Mac is '$rec'. To override anyway: aandeg use $preset --force"
+      exit 1
+    fi
+    aandeg_config_set preset "$preset"
+    echo "Now using '$preset' (model: $(aandeg_catalog_field "$preset" model), needs ~$(aandeg_catalog_field "$preset" needs_gb)GB)."
+    echo "Run 'aandeg start' to (re)load it." ;;
+  models)
+    ram="$(aandeg_ram_gb)"; rec="$(aandeg_recommend_preset "$ram")"; cur="$(aandeg_config_get preset "$rec")"
+    echo "Your Mac has ${ram}GB of RAM. Here's what Aandeg can run:"
+    echo
+    printf '  %-9s %-22s %-7s %s\n' "PRESET" "MODEL" "NEEDS" "ON YOUR MAC"
+    for p in small balanced best; do
+      need="$(aandeg_catalog_field "$p" needs_gb)"
+      if aandeg_preset_fits "$p" "$ram"; then fit="fits"; else fit="needs more RAM than you have"; fi
+      mark=""; [ "$p" = "$rec" ] && mark="  <- best your Mac can run"
+      curmark=""; [ "$p" = "$cur" ] && curmark=" (current)"
+      printf '  %-9s %-22s ~%-6s %s%s%s\n' "$p" "$(aandeg_catalog_field "$p" model)" "${need}GB" "$fit" "$mark" "$curmark"
+    done
+    echo
+    echo "That's why '$rec' is the pick: it's the most capable model your ${ram}GB Mac can run."
+    echo "Want a lighter, faster-loading model instead? That's fine — 'aandeg use small' (or balanced)."
+    echo "Anything bigger than your RAM is blocked unless you add --force." ;;
+  ask)
+    aandeg_ask "$*" ;;
+  chat)
+    aandeg_chat ;;
+  help)
+    cat <<'EOF'
+Aandeg — your private, local AI endpoint. Nothing you send it leaves your Mac.
+
+  aandeg chat                 start an interactive chat
+  aandeg ask "your prompt"    one-shot ask (or: some-cmd | aandeg ask "instruction")
+  aandeg "your prompt"        shortcut for `ask`
+  aandeg -c "your prompt"     ask, then drop into chat to keep digging
+  aandeg models               list models with the RAM each needs, and why one is recommended
+  aandeg use <preset>         switch model: small | balanced | best (bigger than your RAM needs --force)
+  aandeg start | stop | restart | status | logs
+  aandeg endpoint             print the base URL to paste into any OpenAI-compatible app
+  aandeg info                 capabilities manifest (JSON) for programs
+  aandeg doctor               health check
+EOF
+    exit 0 ;;
+  endpoint) echo "http://localhost:$(_port)/v1" ;;
+  info)     aandeg_info_json ;;
+  start)
+    aandeg_ollama_ensure
+    # Server must be up before we can pull/list models, so load it first.
+    aandeg_service_install "$(_port)" "$(aandeg_config_get idle_timeout 30)"
+    aandeg_service_load
+    for _ in $(seq 1 30); do aandeg_health "$(_port)" && break; sleep 1; done
+    aandeg_health "$(_port)" || { echo "Server did not start; see /tmp/aandeg.err"; exit 1; }
+    aandeg_model_ensure "$(aandeg_config_get preset best)"
+    echo "Your private AI is running at http://localhost:$(_port)/v1" ;;
+  stop)     aandeg_service_unload; echo "Stopped." ;;
+  restart)  "$0" stop; "$0" start ;;
+  status)   aandeg_health "$(_port)" && echo "running ($(aandeg_config_get preset best))" || echo "stopped" ;;
+  logs)     tail -n 50 /tmp/aandeg.log 2>/dev/null || echo "no logs yet" ;;
+  doctor)
+    echo "ollama: $(aandeg_ollama_bin)"
+    echo "preset: $(aandeg_config_get preset best) -> $(aandeg_catalog_field "$(aandeg_config_get preset best)" model)"
+    echo "port:   $(_port)"
+    echo "health: $(aandeg_health "$(_port)" && echo ok || echo down)"
+    echo "ram:    $(aandeg_ram_gb)GB" ;;
+  *)
+    # Not a known command -> treat the whole invocation as a prompt, so
+    # `aandeg "say hi in one line"` (and piping) just works.
+    aandeg_ask "$cmd${*:+ $*}" ;;
+esac

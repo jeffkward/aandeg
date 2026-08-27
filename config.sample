@@ -1,0 +1,6 @@
+# ~/.config/aandeg/config
+# Edited by `aandeg use <preset>`, or by hand. All keys are optional; the
+# defaults below are what Aandeg assumes when a key is missing.
+preset=best
+port=11435
+idle_timeout=30
